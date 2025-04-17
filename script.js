@@ -222,17 +222,64 @@ function updateCart() {
 }
 
 // Checkout and payment
-function proceedToCheckout() {
-    if (cart.length === 0) {
-        alert('Please add items to your cart first!');
-        return;
+async function checkout() {
+    try {
+        console.log('Starting checkout process...');
+        const cart = JSON.parse(localStorage.getItem('cart')) || [];
+        if (cart.length === 0) {
+            alert('Your cart is empty!');
+            return;
+        }
+
+        const total = cart.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+        console.log('Cart total:', total);
+        
+        // Show loading indicator
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'payment-loading';
+        loadingDiv.innerHTML = '<p>Processing payment...</p>';
+        document.body.appendChild(loadingDiv);
+        
+        try {
+            let phoneNumber = prompt('Enter your phone number (e.g., 07XXXXXXXX or 254XXXXXXXXX):');
+            if (!phoneNumber) {
+                alert('Phone number is required for payment');
+                return;
+            }
+            
+            // Clean up phone number
+            phoneNumber = phoneNumber.trim().replace(/[^0-9+]/g, '');
+            
+            console.log('Phone number entered:', phoneNumber);
+            console.log('Initiating payment...');
+            
+            const result = await processPayment(total, phoneNumber);
+            console.log('Payment result:', result);
+            
+            if (result.success) {
+                alert('Payment initiated! Please check your phone to complete the M-Pesa payment.');
+                // Clear cart
+                localStorage.removeItem('cart');
+                localStorage.removeItem('currentCart');
+                localStorage.removeItem('currentTotal');
+                // Update UI
+                updateCart();
+                // Redirect to orders page
+                window.location.href = 'orders.html';
+            } else {
+                alert('Payment failed: ' + (result.message || 'Please try again'));
+            }
+        } finally {
+            // Remove loading indicator
+            const loadingElement = document.getElementById('payment-loading');
+            if (loadingElement) {
+                loadingElement.remove();
+            }
+        }
+    } catch (error) {
+        console.error('Checkout error:', error);
+        alert('An error occurred during checkout. Please try again.');
     }
-    
-    // Save cart to localStorage for payment page
-    localStorage.setItem('currentCart', JSON.stringify(cart));
-    localStorage.setItem('currentTotal', total);
-    
-    window.location.href = 'payment.html';
 }
 
 // Function to get Daraja API access token
@@ -413,7 +460,13 @@ async function processPayment(amount, phoneNumber) {
         console.log('Amount:', amount);
         console.log('Phone Number:', phoneNumber);
         
-        const response = await fetch('http://localhost:3001/api/stk-push', {
+        // Get the current domain
+        const baseUrl = window.location.origin;
+        const apiUrl = `${baseUrl}/api/stk-push`;
+        
+        console.log('Making payment request to:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -432,9 +485,29 @@ async function processPayment(amount, phoneNumber) {
             throw new Error(data.error || 'Payment failed');
         }
 
+        if (data.success) {
+            // Save order details
+            const orderDetails = {
+                id: Date.now().toString(),
+                customer: {
+                    phone: phoneNumber
+                },
+                amount: amount,
+                status: 'Pending',
+                date: new Date().toISOString(),
+                items: JSON.parse(localStorage.getItem('cart') || '[]')
+            };
+            
+            // Save to localStorage
+            const orders = JSON.parse(localStorage.getItem('orders') || '[]');
+            orders.push(orderDetails);
+            localStorage.setItem('orders', JSON.stringify(orders));
+        }
+
         return data;
     } catch (error) {
         console.error('Payment error:', error);
+        alert('Payment failed: ' + (error.message || 'Unknown error'));
         throw error;
     }
 }
@@ -564,53 +637,6 @@ function displayUserOrders() {
         `;
         ordersList.appendChild(orderElement);
     });
-}
-
-// Update the checkout function to ensure KES is displayed
-async function checkout() {
-    try {
-        console.log('Starting checkout process...');
-        const cart = JSON.parse(localStorage.getItem('cart')) || [];
-        if (cart.length === 0) {
-            alert('Your cart is empty!');
-            return;
-        }
-
-        const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        console.log('Cart total:', total);
-        
-        const phoneNumber = prompt('Enter your phone number (e.g., 2547XXXXXXXX):');
-        if (!phoneNumber) {
-            alert('Phone number is required for payment');
-            return;
-        }
-        console.log('Phone number entered:', phoneNumber);
-
-        console.log('Initiating payment...');
-        const result = await processPayment(total, phoneNumber);
-        console.log('Payment result:', result);
-        
-        if (result.ResponseCode === '0') {
-            alert('Payment initiated successfully! Please check your phone to complete the payment.');
-            // Clear all cart-related data from localStorage
-            localStorage.removeItem('cart');
-            localStorage.removeItem('currentCart');
-            localStorage.removeItem('currentTotal');
-            // Reset cart and total variables
-            cart = [];
-            total = 0;
-            updateCart();
-            // Update payment display
-            document.getElementById('payment-cart-items').innerHTML = '<p>No items in cart</p>';
-            document.getElementById('payment-total').textContent = 'KES 0';
-        } else {
-            alert('Failed to initiate payment. Please try again.');
-            console.error('Payment failed:', result);
-        }
-    } catch (error) {
-        console.error('Checkout error:', error);
-        alert('An error occurred while processing your payment. Please try again.');
-    }
 }
 
 // Initialize page based on current URL

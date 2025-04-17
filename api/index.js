@@ -4,9 +4,27 @@ const axios = require('axios');
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// Enhanced CORS configuration
+app.use(cors({
+    origin: '*', // Allow all origins
+    methods: ['GET', 'POST', 'OPTIONS'], // Allow these methods
+    allowedHeaders: ['Content-Type', 'Authorization'], // Allow these headers
+    credentials: true // Allow credentials
+}));
+
 app.use(express.json());
+
+// Add OPTIONS handler for preflight requests
+app.options('*', cors());
+
+// Add headers middleware
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', true);
+    next();
+});
 
 // M-Pesa credentials from environment variables
 const CONSUMER_KEY = process.env.CONSUMER_KEY;
@@ -82,12 +100,13 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Enhanced STK Push endpoint with better error handling
+// Enhanced STK Push endpoint with mobile support
 app.post('/api/stk-push', async (req, res) => {
     try {
         console.log('Received STK Push request:', {
-            ...req.body,
-            headers: req.headers
+            body: req.body,
+            userAgent: req.headers['user-agent'],
+            platform: req.headers['sec-ch-ua-platform']
         });
         
         const { amount, phoneNumber } = req.body;
@@ -103,10 +122,17 @@ app.post('/api/stk-push', async (req, res) => {
             });
         }
 
-        // Validate M-Pesa configuration
+        // Validate M-Pesa credentials first
         if (!CONSUMER_KEY || !CONSUMER_SECRET || !PASSKEY || !SHORTCODE) {
+            console.error('M-Pesa credentials missing:', {
+                consumer_key: !CONSUMER_KEY,
+                consumer_secret: !CONSUMER_SECRET,
+                passkey: !PASSKEY,
+                shortcode: !SHORTCODE
+            });
             return res.status(500).json({
-                error: 'M-Pesa configuration incomplete',
+                error: 'Payment configuration error',
+                message: 'M-Pesa is not properly configured',
                 details: {
                     consumer_key: !CONSUMER_KEY ? 'Missing' : 'Present',
                     consumer_secret: !CONSUMER_SECRET ? 'Missing' : 'Present',
@@ -116,59 +142,68 @@ app.post('/api/stk-push', async (req, res) => {
             });
         }
 
-        // Format and validate phone number
-        let formattedPhone = phoneNumber;
-        if (phoneNumber.startsWith('0')) {
-            formattedPhone = '254' + phoneNumber.slice(1);
-        } else if (phoneNumber.startsWith('+254')) {
-            formattedPhone = phoneNumber.slice(1);
+        // Enhanced phone number formatting
+        let formattedPhone = phoneNumber.toString().trim();
+        // Remove any spaces or special characters
+        formattedPhone = formattedPhone.replace(/[^0-9+]/g, '');
+        
+        // Handle different phone formats
+        if (formattedPhone.startsWith('+254')) {
+            formattedPhone = formattedPhone.slice(1); // Remove the +
+        } else if (formattedPhone.startsWith('0')) {
+            formattedPhone = '254' + formattedPhone.slice(1);
+        } else if (formattedPhone.startsWith('7') || formattedPhone.startsWith('1')) {
+            formattedPhone = '254' + formattedPhone;
         }
         
+        // Validate the final phone number format
         if (!/^254[0-9]{9}$/.test(formattedPhone)) {
             return res.status(400).json({
                 error: 'Invalid phone number format',
-                details: 'Phone number must be in the format 254XXXXXXXXX',
+                details: 'Phone number must be a valid Kenyan phone number',
                 received: phoneNumber,
-                formatted: formattedPhone
+                formatted: formattedPhone,
+                expected_format: '254XXXXXXXXX, 07XXXXXXXX, or +254XXXXXXXXX'
             });
         }
 
-        console.log('Formatted phone number:', formattedPhone);
+        console.log('Getting access token for phone:', formattedPhone);
 
         // Get access token
         const accessToken = await getAccessToken();
         if (!accessToken) {
             return res.status(500).json({
-                error: 'Failed to get access token',
-                details: 'Could not authenticate with M-Pesa'
+                error: 'Authentication failed',
+                message: 'Could not get access token from M-Pesa'
             });
         }
+
+        console.log('Access token received successfully');
 
         // Generate timestamp and password
         const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, -3);
         const password = Buffer.from(`${SHORTCODE}${PASSKEY}${timestamp}`).toString('base64');
 
-        // Prepare STK Push request
+        // Ensure amount is a positive integer
+        const processedAmount = Math.max(1, Math.round(Number(amount)));
+
+        // Update STK Push data with mobile-specific configurations
         const stkPushData = {
             BusinessShortCode: SHORTCODE,
             Password: password,
             Timestamp: timestamp,
             TransactionType: 'CustomerPayBillOnline',
-            Amount: Math.round(amount),
+            Amount: processedAmount,
             PartyA: formattedPhone,
             PartyB: SHORTCODE,
             PhoneNumber: formattedPhone,
             CallBackURL: CALLBACK_URL || `https://${process.env.VERCEL_URL}/api/callback`,
             AccountReference: 'FoodDelivery',
-            TransactionDesc: 'Payment for food delivery'
+            TransactionDesc: 'Food Delivery Payment'
         };
 
-        console.log('Sending STK Push request with data:', {
-            ...stkPushData,
-            Password: '[HIDDEN]'
-        });
+        console.log('Sending STK Push request to M-Pesa...');
 
-        // Make the STK Push request
         const response = await axios.post(
             'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest',
             stkPushData,
@@ -180,28 +215,47 @@ app.post('/api/stk-push', async (req, res) => {
             }
         );
 
-        console.log('STK Push response:', response.data);
-        
-        // Send success response
+        console.log('M-Pesa response received:', response.data);
+
+        // Enhanced success response
         res.json({
             success: true,
-            message: 'STK Push sent successfully',
-            data: response.data
+            message: 'Payment request sent successfully',
+            data: {
+                ...response.data,
+                phoneNumber: formattedPhone,
+                amount: processedAmount
+            }
         });
     } catch (error) {
-        console.error('Error processing STK Push:', {
+        console.error('Payment processing error:', {
             message: error.message,
             response: error.response?.data,
-            stack: error.stack
+            stack: error.stack,
+            userAgent: req.headers['user-agent']
         });
 
-        // Send detailed error response
-        res.status(500).json({
+        // Enhanced error response with more specific error messages
+        const errorResponse = {
             error: 'Payment processing failed',
             message: error.message,
             details: error.response?.data || error.message,
-            timestamp: new Date().toISOString()
-        });
+            timestamp: new Date().toISOString(),
+            requestInfo: {
+                userAgent: req.headers['user-agent'],
+                platform: req.headers['sec-ch-ua-platform']
+            }
+        };
+
+        // Add specific error handling for common M-Pesa errors
+        if (error.response?.data?.errorCode) {
+            errorResponse.mpesa_error = {
+                code: error.response.data.errorCode,
+                message: error.response.data.errorMessage
+            };
+        }
+
+        res.status(500).json(errorResponse);
     }
 });
 

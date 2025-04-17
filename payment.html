@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food Delivery - Payment</title>
+    <title>Payment - Food Delivery</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -18,79 +18,86 @@
 
     <div class="container">
         <div class="payment-section">
-            <a href="index.html" class="browse-btn">Back</a>
-
-            <h2>Complete Your Order</h2>
+            <h2>Complete Your Payment</h2>
             
             <div class="order-summary">
                 <h3>Order Summary</h3>
-                <div id="payment-cart-items" class="cart-items"></div>
+                <div id="cart-items"></div>
                 <div class="total">
-                    <p>Total: KES      <span id="payment-total">0</span></p>
+                    Total: <span id="total-amount">KES 0</span>
                 </div>
             </div>
 
-            <form id="paymentForm">
-                <div class="form-group">
-                    <label for="name">Full Name:</label>
-                    <input type="text" id="name" required>
-                </div>
-                <div class="form-group">
-                    <label for="phone">M-Pesa Phone Number:</label>
-                    <input type="tel" id="phone" required>
-                </div>
-                <div class="form-group">
-                    <label for="location">Delivery Location:</label>
-                    <input type="text" id="location" required>
-                </div>
-                
-                <div class="mpesa-info">
-                    <p>You will receive an M-Pesa STK Push notification to complete your payment.</p>
-                </div>
+            <div class="mpesa-info">
+                <h3>M-Pesa Payment</h3>
+                <p>Enter your phone number to receive an STK push notification</p>
+                <form id="payment-form">
+                    <div class="form-group">
+                        <label for="phone">Phone Number</label>
+                        <input type="tel" id="phone" placeholder="e.g., 07XXXXXXXX" required>
+                        <small>Format: 07XXXXXXXX (10 digits)</small>
+                    </div>
+                    <button type="submit" class="pay-btn">Pay with M-Pesa</button>
+                </form>
+            </div>
 
-                <button type="submit" class="pay-btn">Pay with M-Pesa</button>
-            </form>
+            <div id="payment-loading" style="display: none;">
+                <div class="loading-spinner"></div>
+                <p>Waiting for payment confirmation...</p>
+            </div>
         </div>
     </div>
 
     <script src="script.js"></script>
     <script>
-        // Function to update the cart display
-        function updateCartDisplay() {
-            const cart = JSON.parse(localStorage.getItem('cart')) || [];
-            const cartItemsContainer = document.getElementById('payment-cart-items');
-            const totalAmount = document.getElementById('payment-total');
-            let total = 0;
-
-            cartItemsContainer.innerHTML = '';
-            cart.forEach((item, index) => {
-                const itemElement = document.createElement('div');
-                itemElement.className = 'cart-item';
-                itemElement.innerHTML = `
-                    <div class="cart-item-details">
-                        <span class="item-name">${item.name}</span>
-                        <span class="item-price">KES.  ${item.price.toFixed(2)}</span>
-                        <span class="item-quantity">x${item.quantity || 1}</span>
-                    </div>
-                    <button class="remove-btn" onclick="removeFromCart(${index})"> Remove</button>
-                `;
-                cartItemsContainer.appendChild(itemElement);
-                total += item.price * (item.quantity || 1);
-            });
-
-            totalAmount.textContent = total.toFixed(2);
-        }
-
-        // Function to remove item from cart
-        function removeFromCart(index) {
-            const cart = JSON.parse(localStorage.getItem('cart')) || [];
-            cart.splice(index, 1);
-            localStorage.setItem('cart', JSON.stringify(cart));
-            updateCartDisplay();
-        }
-
         // Load cart items when page loads
-        document.addEventListener('DOMContentLoaded', updateCartDisplay);
+        document.addEventListener('DOMContentLoaded', () => {
+            displayCart();
+            
+            // Handle payment form submission
+            document.getElementById('payment-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const phoneNumber = document.getElementById('phone').value;
+                const total = parseFloat(document.getElementById('total-amount').textContent.replace('KES ', ''));
+                
+                if (!phoneNumber || !total) {
+                    alert('Please enter a valid phone number and ensure you have items in your cart');
+                    return;
+                }
+
+                // Show loading indicator
+                document.getElementById('payment-loading').style.display = 'block';
+                
+                try {
+                    const response = await fetch('/api/stk-push', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            amount: total,
+                            phoneNumber: phoneNumber
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        alert('Payment request sent! Please check your phone to complete the payment.');
+                        // Clear cart after successful payment
+                        localStorage.removeItem('cart');
+                        window.location.href = 'orders.html';
+                    } else {
+                        throw new Error(data.error || 'Payment failed');
+                    }
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                } finally {
+                    document.getElementById('payment-loading').style.display = 'none';
+                }
+            });
+        });
     </script>
 </body>
 </html> 
