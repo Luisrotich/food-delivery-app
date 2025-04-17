@@ -221,255 +221,29 @@ function updateCart() {
     saveCart();
 }
 
-// Checkout and payment
-async function checkout() {
-    try {
-        console.log('Starting checkout process...');
-        const cart = JSON.parse(localStorage.getItem('cart')) || [];
-        if (cart.length === 0) {
-            alert('Your cart is empty!');
-            return;
-        }
-
-        const total = cart.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
-        console.log('Cart total:', total);
-        
-        // Show loading indicator
-        const loadingDiv = document.createElement('div');
-        loadingDiv.id = 'payment-loading';
-        loadingDiv.innerHTML = '<p>Processing payment...</p>';
-        document.body.appendChild(loadingDiv);
-        
-        try {
-            let phoneNumber = prompt('Enter your phone number (e.g., 07XXXXXXXX or 254XXXXXXXXX):');
-            if (!phoneNumber) {
-                alert('Phone number is required for payment');
-                return;
-            }
-            
-            // Clean up phone number
-            phoneNumber = phoneNumber.trim().replace(/[^0-9+]/g, '');
-            
-            console.log('Phone number entered:', phoneNumber);
-            console.log('Initiating payment...');
-            
-            const result = await processPayment(total, phoneNumber);
-            console.log('Payment result:', result);
-            
-            if (result.success) {
-                alert('Payment initiated! Please check your phone to complete the M-Pesa payment.');
-                // Clear cart
-                localStorage.removeItem('cart');
-                localStorage.removeItem('currentCart');
-                localStorage.removeItem('currentTotal');
-                // Update UI
-                updateCart();
-                // Redirect to orders page
-                window.location.href = 'orders.html';
-            } else {
-                alert('Payment failed: ' + (result.message || 'Please try again'));
-            }
-        } finally {
-            // Remove loading indicator
-            const loadingElement = document.getElementById('payment-loading');
-            if (loadingElement) {
-                loadingElement.remove();
-            }
-        }
-    } catch (error) {
-        console.error('Checkout error:', error);
-        alert('An error occurred during checkout. Please try again.');
-    }
-}
-
-// Function to get Daraja API access token
-async function getAccessToken() {
-    try {
-        const auth = btoa(`${DARAJA_CONFIG.consumerKey}:${DARAJA_CONFIG.consumerSecret}`);
-        const response = await fetch('https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Basic ${auth}`,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            mode: 'cors'
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.errorMessage || 'Failed to get access token');
-        }
-        
-        const data = await response.json();
-        if (!data.access_token) {
-            throw new Error('No access token received');
-        }
-        return data.access_token;
-    } catch (error) {
-        console.error('Error getting access token:', error);
-        throw error;
-    }
-}
-
-// Function to generate timestamp
-function generateTimestamp() {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hour = String(date.getHours()).padStart(2, '0');
-    const minute = String(date.getMinutes()).padStart(2, '0');
-    const second = String(date.getSeconds()).padStart(2, '0');
-    return `${year}${month}${day}${hour}${minute}${second}`;
-}
-
-// Function to generate password
-function generatePassword() {
-    const timestamp = generateTimestamp();
-    const password = btoa(`${DARAJA_CONFIG.businessShortCode}${DARAJA_CONFIG.passkey}${timestamp}`);
-    return password;
-}
-
-// Function to format phone number
-function formatPhoneNumber(phone) {
-    // Remove any non-digit characters
-    phone = phone.replace(/\D/g, '');
-    
-    // If number starts with 0, replace with 254
-    if (phone.startsWith('0')) {
-        phone = '254' + phone.substring(1);
-    }
-    
-    // If number starts with +, remove it
-    if (phone.startsWith('+')) {
-        phone = phone.substring(1);
-    }
-    
-    // If number doesn't start with 254, add it
-    if (!phone.startsWith('254')) {
-        phone = '254' + phone;
-    }
-    
-    return phone;
-}
-
-// Function to process STK Push
-async function processSTKPush(phoneNumber, amount) {
-    try {
-        // Get access token
-        const accessToken = await getAccessToken();
-        
-        // Format phone number
-        const formattedPhone = formatPhoneNumber(phoneNumber);
-        
-        // Generate timestamp and password
-        const timestamp = generateTimestamp();
-        const password = generatePassword();
-        
-        // Prepare STK Push request
-        const stkPushRequest = {
-            BusinessShortCode: DARAJA_CONFIG.businessShortCode,
-            Password: password,
-            Timestamp: timestamp,
-            TransactionType: "CustomerPayBillOnline",
-            Amount: amount,
-            PartyA: formattedPhone,
-            PartyB: DARAJA_CONFIG.businessShortCode,
-            PhoneNumber: formattedPhone,
-            CallBackURL: DARAJA_CONFIG.callbackUrl,
-            AccountReference: "FoodDelivery",
-            TransactionDesc: "Payment for food delivery"
-        };
-        
-        console.log('STK Push Request:', stkPushRequest);
-        
-        // Make STK Push request
-        const response = await fetch('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(stkPushRequest),
-            mode: 'cors'
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error('STK Push Error Response:', errorData);
-            throw new Error(errorData.errorMessage || 'Failed to initiate STK Push');
-        }
-        
-        const responseData = await response.json();
-        console.log('STK Push Response:', responseData);
-        
-        if (responseData.ResponseCode === '0') {
-            return {
-                success: true,
-                message: 'STK Push initiated successfully. Please check your phone to complete the payment.',
-                checkoutRequestID: responseData.CheckoutRequestID,
-                merchantRequestID: responseData.MerchantRequestID
-            };
-        } else {
-            throw new Error(responseData.ResponseDescription || 'Failed to initiate STK Push');
-        }
-    } catch (error) {
-        console.error('STK Push error:', error);
-        return {
-            success: false,
-            message: error.message || 'Failed to initiate STK Push. Please try again.'
-        };
-    }
-}
-
-// Function to check payment status
-async function checkPaymentStatus(checkoutRequestID) {
-    try {
-        const accessToken = await getAccessToken();
-        const timestamp = generateTimestamp();
-        const password = generatePassword();
-        
-        const response = await fetch('https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                BusinessShortCode: DARAJA_CONFIG.businessShortCode,
-                Password: password,
-                Timestamp: timestamp,
-                CheckoutRequestID: checkoutRequestID
-            })
-        });
-        
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Error checking payment status:', error);
-        throw error;
-    }
-}
-
-// Process payment
+// M-Pesa payment handling
 async function processPayment(amount, phoneNumber) {
     try {
-        console.log('Starting payment process...');
-        console.log('Amount:', amount);
-        console.log('Phone Number:', phoneNumber);
-        
-        // Get the current domain
-        const baseUrl = window.location.origin;
-        const apiUrl = `${baseUrl}/api/stk-push`;
-        
-        console.log('Making payment request to:', apiUrl);
-        
-        const response = await fetch(apiUrl, {
+        // Show loading indicator
+        const loadingIndicator = document.getElementById('payment-loading');
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'block';
+        }
+
+        // Validate phone number
+        if (!phoneNumber || phoneNumber.length < 10) {
+            throw new Error('Please enter a valid phone number');
+        }
+
+        // Remove any non-digit characters from phone number
+        phoneNumber = phoneNumber.replace(/\D/g, '');
+
+        // Make the API request
+        const response = await fetch('/api/stk-push', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
             body: JSON.stringify({
                 amount: amount,
@@ -477,40 +251,51 @@ async function processPayment(amount, phoneNumber) {
             })
         });
 
-        console.log('Server response status:', response.status);
         const data = await response.json();
-        console.log('Server response data:', data);
-        
+
         if (!response.ok) {
             throw new Error(data.error || 'Payment failed');
         }
 
         if (data.success) {
-            // Save order details
-            const orderDetails = {
-                id: Date.now().toString(),
-                customer: {
-                    phone: phoneNumber
-                },
-                amount: amount,
-                status: 'Pending',
-                date: new Date().toISOString(),
-                items: JSON.parse(localStorage.getItem('cart') || '[]')
-            };
+            // Show success message
+            alert('Payment request sent! Please check your phone to complete the payment.');
             
-            // Save to localStorage
-            const orders = JSON.parse(localStorage.getItem('orders') || '[]');
-            orders.push(orderDetails);
-            localStorage.setItem('orders', JSON.stringify(orders));
+            // Clear cart after successful payment
+            localStorage.removeItem('cart');
+            cart = [];
+            
+            // Redirect to orders page
+            window.location.href = 'orders.html';
+        } else {
+            throw new Error(data.message || 'Payment failed');
         }
-
-        return data;
     } catch (error) {
         console.error('Payment error:', error);
-        alert('Payment failed: ' + (error.message || 'Unknown error'));
-        throw error;
+        alert('Error: ' + error.message);
+    } finally {
+        // Hide loading indicator
+        const loadingIndicator = document.getElementById('payment-loading');
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+        }
     }
 }
+
+// Handle payment form submission
+document.getElementById('payment-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const phoneNumber = document.getElementById('phone').value;
+    const total = parseFloat(document.getElementById('total-amount').textContent.replace('KES ', ''));
+    
+    if (!phoneNumber || !total) {
+        alert('Please enter a valid phone number and ensure you have items in your cart');
+        return;
+    }
+
+    await processPayment(total, phoneNumber);
+});
 
 // Admin functions
 function refreshOrders() {
