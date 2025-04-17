@@ -17,13 +17,35 @@ const CONSUMER_KEY = process.env.CONSUMER_KEY;
 const CONSUMER_SECRET = process.env.CONSUMER_SECRET;
 const PASSKEY = process.env.PASSKEY;
 const SHORTCODE = process.env.SHORTCODE;
-const CALLBACK_URL = process.env.CALLBACK_URL;
+const CALLBACK_URL = process.env.CALLBACK_URL || 'https://your-domain.vercel.app/callback';
 
 // Verify credentials are loaded
 if (!CONSUMER_KEY || !CONSUMER_SECRET || !PASSKEY || !SHORTCODE) {
-    console.error('Error: M-Pesa credentials are missing. Please check your .env file.');
-    process.exit(1);
+    console.error('Warning: Some M-Pesa credentials are missing. Payment features may not work properly.');
+    console.error('Missing credentials:', {
+        CONSUMER_KEY: !CONSUMER_KEY,
+        CONSUMER_SECRET: !CONSUMER_SECRET,
+        PASSKEY: !PASSKEY,
+        SHORTCODE: !SHORTCODE,
+        CALLBACK_URL: !CALLBACK_URL
+    });
 }
+
+// Add a basic health check endpoint
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        environment: process.env.NODE_ENV,
+        mpesa: {
+            configured: !!(CONSUMER_KEY && CONSUMER_SECRET && PASSKEY && SHORTCODE)
+        }
+    });
+});
+
+// Serve index.html for the root route
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // Get access token
 async function getAccessToken() {
