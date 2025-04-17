@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Delivery - My Orders</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Food Delivery</div>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="orders.html" class="active">My Orders</a>
+            <a href="admin.html">Admin</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="orders-section">
+            <h1>My Orders</h1>
+            
+            <div id="orders-list">
+                <!-- Orders will be loaded dynamically -->
+            </div>
+
+            <div id="no-orders" class="no-orders">
+                <p>You haven't placed any orders yet.</p>
+                <a href="index.html" class="browse-btn">Browse Menu</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 

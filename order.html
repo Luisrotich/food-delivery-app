@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Delivery - Order</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Food Delivery</div>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="orders.html">My Orders</a>
+            <a href="admin.html">Admin</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="menu-section">
+            <h2 id="category-title">Menu</h2>
+            <div class="food-items" id="food-items">
+                <!-- Food items will be loaded dynamically -->
+            </div>
+        </div>
+
+        <div class="cart-section">
+            <h2>Your Cart</h2>
+            <div id="cart-items"></div>
+            <div class="total">
+                <p>Total:   <span id="total-amount">0</span></p>
+            </div>
+            <button onclick="proceedToCheckout()" class="checkout-btn">Proceed to Checkout</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 

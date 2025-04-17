@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Delivery - Home</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Food Delivery</div>
+        <div class="nav-links">
+            <a href="index.html" class="active">Home</a>
+            <a href="orders.html">My Orders</a>
+            <a href="admin.html">Admin</a>
+            <div class="cart-icon" onclick="window.location.href='payment.html'">
+                <span class="cart-count">0</span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="21" r="1"></circle>
+                    <circle cx="20" cy="21" r="1"></circle>
+                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                </svg>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>Welcome to Food Delivery</h1>
+        
+        <div class="categories">
+            <h2>Food Categories</h2>
+            <div class="category-grid">
+                <div class="category-card" onclick="window.location.href='order.html?category=local'">
+                    <img src="images/local-food.jpg" alt="Local Food">
+                    <h3>Local Dishes</h3>
+                    <p>Traditional Nigerian meals</p>
+                </div>
+                <div class="category-card" onclick="window.location.href='order.html?category=continental'">
+                    <img src="images/continental.jpg" alt="Continental Food">
+                    <h3>Continental</h3>
+                    <p>International cuisine</p>
+                </div>
+                <div class="category-card" onclick="window.location.href='order.html?category=fastfood'">
+                    <img src="images/fast-food.jpg" alt="Fast Food">
+                    <h3>Fast Food</h3>
+                    <p>Quick and delicious meals</p>
+                </div>
+                <div class="category-card" onclick="window.location.href='order.html?category=drinks'">
+                    <img src="images/drinks.jpg" alt="Drinks">
+                    <h3>Drinks</h3>
+                    <p>Beverages and refreshments</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Update cart count when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            updateCartCount();
+        });
+
+        // Function to update cart count
+        function updateCartCount() {
+            const cart = JSON.parse(localStorage.getItem('cart')) || [];
+            const cartCount = document.querySelector('.cart-count');
+            cartCount.textContent = cart.length;
+        }
+    </script>
+</body>
+</html> 
